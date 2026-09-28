@@ -1,0 +1,7 @@
+__pycache__/
+.env
+downloads/
+*.zip
+*.log
+.venv/
+venv/
