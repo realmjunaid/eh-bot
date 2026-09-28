@@ -357,19 +357,26 @@ class GoFileClient:
             server = await self.get_server(session)
             url = f"https://{server}.gofile.io/uploadFile"
             mime, _ = mimetypes.guess_type(path.name)
-            form = aiohttp.FormData()
+
+            mp = aiohttp.MultipartWriter("form-data")
             if self.token:
-                form.add_field("token", self.token)
+                p = aiohttp.payload.StringPayload(self.token)
+                p.set_content_disposition("form-data", name="token")
+                mp.append_payload(p)
             if self.folder_id:
-                form.add_field("folderId", self.folder_id)
+                p = aiohttp.payload.StringPayload(self.folder_id)
+                p.set_content_disposition("form-data", name="folderId")
+                mp.append_payload(p)
             if progress_cb:
-                form.add_field("file", _ProgressReader(path, progress_cb, size),
-                               filename=path.name, content_type=mime or "application/octet-stream")
+                fp = _ProgressFilePayload(path, progress_cb, size)
             else:
-                form.add_field("file", open(path, "rb"),
-                               filename=path.name, content_type=mime or "application/octet-stream")
+                fp = aiohttp.payload.BufferedReaderPayload(open(path, "rb"))
+            fp.set_content_disposition("form-data", name="file", filename=path.name)
+            fp.headers[aiohttp.hdrs.CONTENT_TYPE] = mime or "application/octet-stream"
+            mp.append_payload(fp)
+
             log.info("Uploading %s (%.2f MB) to %s", path.name, size / 1e6, server)
-            async with session.post(url, data=form, headers=self._auth_headers()) as resp:
+            async with session.post(url, data=mp, headers=self._auth_headers()) as resp:
                 try:
                     data = await resp.json()
                 except Exception as exc:
@@ -379,33 +386,35 @@ class GoFileClient:
                 return data["data"]
 
 
-class _ProgressReader:
+class _ProgressFilePayload(aiohttp.payload.BufferedReaderPayload):
+    """File payload that reports upload progress (serializable by aiohttp)."""
+
     def __init__(self, path: Path, cb, total: int, chunk: int = 1024 * 256) -> None:
-        self._f = open(path, "rb")
+        self._fh = open(path, "rb")
         self._cb = cb
         self._total = total
         self._sent = 0
         self._chunk = chunk
+        super().__init__(self._fh)
 
-    async def read(self, n: int = -1):
-        data = self._f.read(self._chunk if n == -1 else n)
-        if data:
-            self._sent += len(data)
+    async def write(self, writer) -> None:
+        loop = asyncio.get_running_loop()
+        while True:
+            chunk = await loop.run_in_executor(None, self._fh.read, self._chunk)
+            if not chunk:
+                break
+            await writer.write(chunk)
+            self._sent += len(chunk)
             try:
                 r = self._cb(self._sent, self._total)
                 if asyncio.iscoroutine(r):
                     await r
             except Exception:
                 pass
-        else:
-            try:
-                self._f.close()
-            except Exception:
-                pass
-        return data
-
-    def __len__(self):
-        return self._total
+        try:
+            self._fh.close()
+        except Exception:
+            pass
 
 # ============================== PIPELINE ==============================
 
