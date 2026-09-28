@@ -4,7 +4,7 @@ Run:  pip install -r requirements.txt
       copy .env.example .env   (fill DISCORD_TOKEN)
       python bot.py
 
-Commands: /eh-dl <url> | /eh-queue | /eh-help
+Commands: /ehd <url> | /ping
 """
 from __future__ import annotations
 
@@ -61,10 +61,21 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
+def _get_id_list(name: str) -> list[int]:
+    """Parse comma-separated Discord channel IDs, e.g. '123, 456'."""
+    ids: list[int] = []
+    for part in os.getenv(name, "").replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    return ids
+
+
 @dataclass
 class Settings:
     discord_token: str = field(default_factory=lambda: os.getenv("DISCORD_TOKEN", ""))
     command_prefix: str = field(default_factory=lambda: os.getenv("COMMAND_PREFIX", "!"))
+    allowed_channel_ids: list[int] = field(default_factory=lambda: _get_id_list("ALLOWED_CHANNEL_IDS"))
     gofile_token: str = field(default_factory=lambda: os.getenv("GOFILE_TOKEN", "").strip())
     gofile_folder_id: str = field(default_factory=lambda: os.getenv("GOFILE_FOLDER_ID", "").strip())
     cleanup_after_upload: bool = _get_bool("CLEANUP_AFTER_UPLOAD", True)
@@ -569,6 +580,9 @@ class EHCommands(commands.Cog):
         self._active: dict[str, str] = {}
 
     def _check_channel(self, interaction: discord.Interaction) -> str | None:
+        if settings.allowed_channel_ids:
+            if interaction.channel_id not in settings.allowed_channel_ids:
+                return "This bot only works in the designated channel."
         ch = interaction.channel
         if settings.require_nsfw_channel and isinstance(ch, (discord.TextChannel, discord.Thread)):
             if not getattr(ch, "nsfw", False):
@@ -598,9 +612,9 @@ class EHCommands(commands.Cog):
         em.set_footer(text=f"Job {job_id}")
         return em
 
-    @app_commands.command(name="eh-dl", description="Download an E-Hentai gallery and get a GoFile link.")
+    @app_commands.command(name="ehd", description="Download an E-Hentai gallery and get a GoFile link.")
     @app_commands.describe(url="Gallery URL, e.g. https://e-hentai.org/g/12345/abcdef1234/")
-    async def eh_dl(self, interaction: discord.Interaction, url: str) -> None:
+    async def ehd(self, interaction: discord.Interaction, url: str) -> None:
         err = self._check_channel(interaction)
         if err:
             await interaction.response.send_message(f"🔞 {err}", ephemeral=True)
@@ -671,22 +685,14 @@ class EHCommands(commands.Cog):
                 pass
             self._active.pop(job_id, None)
 
-    @app_commands.command(name="eh-queue", description="Show active download jobs.")
-    async def eh_queue(self, interaction: discord.Interaction) -> None:
-        if not self._active:
-            await interaction.response.send_message("📭 Queue is empty.", ephemeral=True)
+    @app_commands.command(name="ping", description="Check if the bot is alive.")
+    async def ping(self, interaction: discord.Interaction) -> None:
+        err = self._check_channel(interaction)
+        if err:
+            await interaction.response.send_message(f"⛔ {err}", ephemeral=True)
             return
-        lines = [f"`{jid}` — <{u}>" for jid, u in self._active.items()]
-        await interaction.response.send_message("⏳ **Active jobs:**\n" + "\n".join(lines), ephemeral=True)
-
-    @app_commands.command(name="eh-help", description="How to use the E-Hentai downloader.")
-    async def eh_help(self, interaction: discord.Interaction) -> None:
-        em = discord.Embed(title="E-Hentai → GoFile bot", color=discord.Color.blurple())
-        em.add_field(name="/eh-dl <url>",
-                     value="Download a gallery, zip it, upload to GoFile.\n"
-                           "Example: `/eh-dl url:https://e-hentai.org/g/123456/abcdef1234/`", inline=False)
-        em.add_field(name="/eh-queue", value="List running jobs.", inline=False)
-        await interaction.response.send_message(embed=em, ephemeral=True)
+        ms = round(self.bot.latency * 1000) if self.bot.latency else 0
+        await interaction.response.send_message(f"🏓 Pong! `{ms}ms`", ephemeral=True)
 
 
 class EHBot(commands.Bot):

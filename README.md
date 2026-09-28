@@ -7,11 +7,12 @@ uploads the zip to [GoFile](https://gofile.io), and posts the download link.
 
 | Command | Description |
 |---|---|
-| `/eh-dl <url>` | Download gallery, upload to GoFile, reply with link |
-| `/eh-queue` | List active jobs |
-| `/eh-help` | Usage help |
+| `/ehd <url>` | Download gallery, upload to GoFile, reply with link |
+| `/ping` | Check if the bot is alive |
 
-Only works in **NSFW-marked channels** by default (`REQUIRE_NSFW_CHANNEL=true`).
+Only works in channels listed in `ALLOWED_CHANNEL_IDS` (empty = everywhere),
+and in **NSFW-marked channels** by default. Channel ID: right-click channel
+-> Copy Channel ID (Developer Mode on).
 
 ## Setup
 
