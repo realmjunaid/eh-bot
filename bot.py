@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import mimetypes
 import os
 import re
@@ -126,10 +127,6 @@ settings = Settings()
 
 GALLERY_RE = re.compile(
     r"https?://(?:e-hentai\.org|exhentai\.org)/g/(?P<gid>\d+)/(?P<token>[0-9a-f]+)/?",
-    re.IGNORECASE,
-)
-IMAGE_PAGE_RE = re.compile(
-    r"https?://(?:e-hentai\.org|exhentai\.org)/s/[0-9a-f]+/\d+-\d+",
     re.IGNORECASE,
 )
 FILECOUNT_RE = re.compile(r"(\d+)\s+pages?", re.IGNORECASE)
@@ -341,14 +338,15 @@ class GoFileClient:
 
     async def get_server(self, session: aiohttp.ClientSession) -> str:
         async with session.get(f"{GOFILE_API}/servers", headers=self._auth_headers()) as resp:
-            data = await resp.json()
-            if data.get("status") != "ok":
-                raise GoFileError(f"getServers failed: {data}")
-            servers = data["data"]["servers"]
-            if isinstance(servers, dict):
-                servers = list(servers.values())
-            name = servers[0]["name"] if isinstance(servers[0], dict) else servers[0]
-            return str(name)
+            try:
+                data = await resp.json()
+                servers = data["data"]["servers"]
+                if isinstance(servers, dict):
+                    servers = list(servers.values())
+                name = servers[0]["name"] if isinstance(servers[0], dict) else servers[0]
+                return str(name)
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise GoFileError(f"getServers returned unexpected data: {data!r}") from exc
 
     async def upload_file(self, path: str | Path, progress_cb=None) -> dict:
         path = Path(path)
@@ -617,7 +615,8 @@ class EHCommands(commands.Cog):
     async def ehd(self, interaction: discord.Interaction, url: str) -> None:
         err = self._check_channel(interaction)
         if err:
-            await interaction.response.send_message(f"🔞 {err}", ephemeral=True)
+            emoji = "🔞" if "NSFW" in err else "⛔"
+            await interaction.response.send_message(f"{emoji} {err}", ephemeral=True)
             return
         try:
             _, _, canonical = normalize_gallery_url(url, settings.eh_enable_exhentai)
@@ -691,7 +690,7 @@ class EHCommands(commands.Cog):
         if err:
             await interaction.response.send_message(f"⛔ {err}", ephemeral=True)
             return
-        ms = round(self.bot.latency * 1000) if self.bot.latency else 0
+        ms = round(raw * 1000) if (raw := self.bot.latency) and not math.isnan(raw) else 0
         await interaction.response.send_message(f"🏓 Pong! `{ms}ms`", ephemeral=True)
 
 

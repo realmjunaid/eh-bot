@@ -24,12 +24,12 @@ and in **NSFW-marked channels** by default. Channel ID: right-click channel
 3. Copy config and fill it in:
    ```powershell
    copy .env.example .env
-   # edit .env -> DISCORD_TOKEN, GOFILE_TOKEN (optional)
+   # edit .env -> DISCORD_TOKEN (required), GOFILE_TOKEN + ALLOWED_CHANNEL_IDS (optional)
    ```
 4. Create the Discord bot:
    - https://discord.com/developers/applications → New Application → Bot → copy token → `DISCORD_TOKEN`
-   - Invite URL: `https://discord.com/oauth2/authorize?client_id=<APP_ID>&permissions=274878221312&scope=bot+applications.commands`
-   - Required permissions: Send Messages, Embed Links, Attach Files, Use Slash Commands.
+   - Invite URL: `https://discord.com/oauth2/authorize?client_id=<APP_ID>&permissions=2147502080&scope=bot+applications.commands`
+   - Required permissions: Send Messages, Embed Links, Use Slash Commands.
 5. Run:
    ```powershell
    python bot.py
@@ -37,24 +37,31 @@ and in **NSFW-marked channels** by default. Channel ID: right-click channel
 
 ## Configuration (.env)
 
+Basic keys (in `.env.example`):
+
 | Key | Purpose |
 |---|---|
 | `DISCORD_TOKEN` | Bot token (required) |
 | `GOFILE_TOKEN` | GoFile account token for stable uploads (optional, guest mode otherwise). Get it at gofile.io → profile |
-| `GOFILE_FOLDER_ID` | Upload into a specific GoFile folder (optional) |
-| `EH_IPB_MEMBER_ID` / `EH_IPB_PASS_HASH` / `EH_IGNEOUS` | E-Hentai login cookies to raise IP quota (optional) |
-| `EH_ENABLE_EXHENTAI` | Allow `exhentai.org` URLs (needs all 3 cookies) |
-| `EH_FETCH_DELAY` | Seconds between image-page fetches (keep ≥ 0.5 to avoid 509 bans) |
-| `MAX_CONCURRENT_GALLERIES` / `MAX_CONCURRENT_IMAGES` | Concurrency caps |
-| `MAX_IMAGES_PER_GALLERY` | Safety cap (`0` = unlimited) |
-| `MAX_ZIP_MB` | Refuse zips over this size (`0` = unlimited) |
-| `REQUIRE_NSFW_CHANNEL` | Restrict to NSFW channels |
-| `CLEANUP_AFTER_UPLOAD` | Delete temp files after sending the link |
+| `ALLOWED_CHANNEL_IDS` | Comma-separated channel IDs the bot works in (optional, empty = everywhere) |
+
+Advanced keys (optional, sane defaults — only set if you need them):
+
+| Key | Default | Purpose |
+|---|---|---|
+| `EH_IPB_MEMBER_ID` / `EH_IPB_PASS_HASH` / `EH_IGNEOUS` | — | E-Hentai login cookies to raise IP quota |
+| `EH_ENABLE_EXHENTAI` | `false` | Allow `exhentai.org` URLs (needs all 3 cookies) |
+| `EH_FETCH_DELAY` | `1.0` | Seconds between image-page fetches (keep ≥ 0.2 to avoid 509 bans) |
+| `MAX_CONCURRENT_GALLERIES` / `MAX_CONCURRENT_IMAGES` | `2` / `5` | Concurrency caps |
+| `MAX_IMAGES_PER_GALLERY` | `0` (unlimited) | Safety cap per gallery |
+| `MAX_ZIP_MB` | `0` (unlimited) | Refuse zips over this size |
+| `REQUIRE_NSFW_CHANNEL` | `true` | Restrict to NSFW channels |
+| `CLEANUP_AFTER_UPLOAD` | `true` | Delete temp files after sending the link |
 
 ## How it works
 
 ```
-Discord /eh-dl <gallery url>
+Discord /ehd <gallery url>
   → collect /s/ page links from gallery (?p=0..N)
   → resolve each /s/ page to direct img#img URL (sequential + delay)
   → download images concurrently (default 5)
@@ -67,18 +74,16 @@ Discord /eh-dl <gallery url>
 
 - Plain `e-hentai.org` works without login but shares a per-IP quota. Hitting it returns **509** — the bot surfaces this as "image limit exceeded, try again later".
 - Adding `EH_*` cookies (from a logged-in browser session) raises the quota.
-- Keep `EH_FETCH_DELAY >= 0.5` (default `1.0`). Faster scraping gets your IP temp-banned.
+- Keep `EH_FETCH_DELAY >= 0.2` (default `1.0`). Faster scraping gets your IP temp-banned.
 - ExHentai ("sad panda" without login) requires all three cookies + `EH_ENABLE_EXHENTAI=true`.
 
 ## Project layout
 
 ```
-bot.py             entry point
-config.py          .env loading + validation
-ehentai.py         gallery / image-page scraping
-gofile.py          GoFile upload client
-downloader.py      pipeline: download -> zip -> upload
-cogs/eh_commands.py  slash commands + progress embeds
+bot.py             everything: config, E-Hentai scraper, GoFile client,
+                   download→zip→upload pipeline, /ehd + /ping commands
+requirements.txt   dependencies
+.env.example       config template (copy to .env)
 ```
 
 ## Troubleshooting
